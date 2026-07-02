@@ -157,6 +157,25 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 .thanks .big{font-size:2.6rem}
 .thanks p{color:var(--ink-soft);margin-top:.6rem}
 
+/* QR + share */
+.stage-share{display:flex;gap:1rem;align-items:center;flex-wrap:wrap}
+.qrbox{background:#fff;border-radius:12px;padding:.55rem .55rem .4rem;display:flex;flex-direction:column;align-items:center;gap:.25rem;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.qrbox img,.qrbox canvas{display:block;border-radius:4px}
+.qrbox span{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+/* quiz reveal */
+.hbar .row.correct .fill{box-shadow:inset 0 0 0 3px #fff}
+.hbar .opt .tick{color:var(--mint);font-weight:700;margin-left:.4rem}
+/* leaderboard */
+#lead-overlay{position:fixed;inset:0;background:rgba(23,18,51,.94);z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;cursor:pointer}
+#lead-overlay h2{font-family:var(--disp);font-size:2.2rem;color:var(--amber);margin-bottom:1.4rem}
+.lead-list{width:100%;max-width:34rem;display:flex;flex-direction:column;gap:.6rem;max-height:60vh;overflow-y:auto}
+.lead-row{display:flex;justify-content:space-between;align-items:center;background:#fff;color:var(--ink);border-radius:10px;padding:.7rem 1.1rem;font-weight:600;animation:pop .35s ease}
+.lead-row .rank{font-family:var(--mono);color:var(--signal);margin-right:.8rem}
+.lead-row .pts{font-family:var(--mono)}
+.lead-row:nth-child(1){background:var(--amber)}
+.lead-row:nth-child(2){background:#EEEBFF}
+.lead-row:nth-child(3){background:#E4FBF1}
+
 /* toast */
 #toast{position:fixed;bottom:1.4rem;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:.7rem 1.2rem;border-radius:10px;font-size:.9rem;opacity:0;pointer-events:none;transition:.25s;z-index:99}
 #toast.show{opacity:1;transform:translateX(-50%)}
@@ -222,7 +241,7 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 <div id="view-present" class="hidden">
   <div class="stage-top">
     <span class="deck-name" id="stage-deck-name"></span>
-    <div class="ticket"><span class="t-label">Join at this page<br>with code</span><span class="t-code" id="stage-code"></span></div>
+    <div class="stage-share"><div class="qrbox"><div id="stage-qr"></div><span>Scan to join</span></div><div class="ticket"><span class="t-label">Join at this page<br>with code</span><span class="t-code" id="stage-code"></span></div></div>
   </div>
   <div class="stage-main">
     <div class="stage-q" id="stage-q"></div>
@@ -231,10 +250,18 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
   <div class="stage-bottom">
     <span class="resp-count" id="stage-count">0 responses</span>
     <div class="nav-btns">
+      <button class="btn" onclick="app.exportCSV()" title="Download all responses">⬇ CSV</button>
+      <button class="btn hidden" id="lead-btn" onclick="app.toggleLead()">🏆 Leaderboard</button>
+      <button class="btn hidden" id="reveal-btn" style="background:var(--mint);color:var(--ink)" onclick="app.reveal()">✓ Reveal answer</button>
       <button class="btn" onclick="app.nav(-1)">← Prev</button>
       <button class="btn" onclick="app.nav(1)">Next →</button>
       <button class="btn warn" onclick="app.endSession()">End session</button>
     </div>
+  </div>
+  <div id="lead-overlay" class="hidden" onclick="app.toggleLead()">
+    <h2>🏆 Leaderboard</h2>
+    <div class="lead-list" id="lead-list"></div>
+    <p style="color:#8F87C4;margin-top:1.2rem;font-size:.85rem">Click anywhere to close</p>
   </div>
 </div>
 
@@ -252,6 +279,7 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 <!-- Firebase compat SDK (loaded but only used if configured) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <script>
 /* ============================================================
@@ -289,6 +317,7 @@ function makeAdapter(){
       mode:'live',
       async createSession(code,data){ await db.ref('sessions/'+code).set(data); },
       async setCurrent(code,i){ await db.ref('sessions/'+code+'/current').set(i); },
+      async setRevealed(code,slideId){ await db.ref('sessions/'+code+'/revealed/'+slideId).set(true); },
       async endSession(code){ await db.ref('sessions/'+code+'/state').set('ended'); },
       async pushResponse(code,slideId,value){ await db.ref('sessions/'+code+'/responses/'+slideId).push(value); },
       async getSession(code){ const s = await db.ref('sessions/'+code).get(); return s.val(); },
@@ -309,6 +338,7 @@ function makeAdapter(){
     mode:'demo',
     async createSession(c,d){ write(c,d); },
     async setCurrent(c,i){ const d=read(c); if(d){d.current=i; write(c,d);} },
+    async setRevealed(c,slideId){ const d=read(c); if(d){ d.revealed = d.revealed||{}; d.revealed[slideId]=true; write(c,d);} },
     async endSession(c){ const d=read(c); if(d){d.state='ended'; write(c,d);} },
     async pushResponse(c,slideId,value){
       const d=read(c); if(!d) return;
@@ -386,7 +416,7 @@ const app = {
   },
   blankSlide(type){
     const s = { id:uid(), type, question:'' };
-    if(type==='choice') s.options=['',''];
+    if(type==='choice'){ s.options=['','']; s.quiz=false; s.correct=0; }
     if(type==='scale'){ s.min=1; s.max=5; s.minLabel='Not at all'; s.maxLabel='Absolutely'; }
     return s;
   },
@@ -431,12 +461,18 @@ const app = {
     if(!s){ $('editor-pane').innerHTML='<div class="empty-editor">Add a question to get started.</div>'; return; }
     let extra = '';
     if(s.type==='choice'){
-      extra = `<label class="lbl">Options</label>` + s.options.map((o,j)=>`
+      extra = `<label class="lbl">Options${s.quiz?' — tick the correct answer':''}</label>` + s.options.map((o,j)=>`
         <div class="opt-row">
+          ${s.quiz?`<input type="radio" name="correct-opt" title="Mark as correct answer" ${(s.correct||0)===j?'checked':''} onchange="app.slide().correct=${j}">`:''}
           <input class="field" value="${esc(o)}" placeholder="Option ${j+1}" oninput="app.slide().options[${j}]=this.value;app.softList()">
           <button class="btn warn mini" ${s.options.length<=2?'disabled':''} onclick="app.slide().options.splice(${j},1);app.renderBuilder()">✕</button>
         </div>`).join('') +
-        `<button class="btn ghost mini" onclick="app.slide().options.push('');app.renderBuilder()">＋ Add option</button>`;
+        `<button class="btn ghost mini" onclick="app.slide().options.push('');app.renderBuilder()">＋ Add option</button>
+        <label class="lbl">Quiz scoring</label>
+        <label style="display:flex;gap:.5rem;align-items:center;font-size:.9rem;color:var(--ink-soft);cursor:pointer">
+          <input type="checkbox" ${s.quiz?'checked':''} onchange="app.slide().quiz=this.checked;app.renderBuilder()">
+          Score this question — participants pick a nickname; correct answer earns 100 pts
+        </label>`;
     }
     if(s.type==='scale'){
       extra = `
@@ -481,12 +517,23 @@ const app = {
     const session = {
       state:'live', current:0,
       title:this.deck.title||'Untitled survey',
-      slides:this.deck.slides.map(s=>({...s, options:s.options?s.options.filter(o=>o.trim()):undefined})),
+      hasQuiz: this.deck.slides.some(s=>s.type==='choice'&&s.quiz),
+      revealed:{},
+      slides:this.deck.slides.map(s=>{
+        const opts = s.options ? s.options.filter(o=>o.trim()) : undefined;
+        const out = {...s, options:opts};
+        if(s.type==='choice') out.correct = Math.min(s.correct||0, (opts?opts.length:1)-1);
+        return out;
+      }),
       responses:{}
     };
     await store.createSession(this.code, session);
     $('stage-code').textContent = this.code;
     $('stage-deck-name').textContent = session.title;
+    const share = location.origin + location.pathname + '?code=' + this.code;
+    const qEl = $('stage-qr'); qEl.innerHTML = '';
+    if (window.QRCode) new QRCode(qEl, {text: share, width:110, height:110, correctLevel: QRCode.CorrectLevel.M});
+    $('lead-btn').classList.toggle('hidden', !session.hasQuiz);
     if(this.unsub) this.unsub();
     this.unsub = store.onSession(this.code, s=>{ this.session=s; this.renderStage(); });
     this.show('view-present');
@@ -514,14 +561,18 @@ const app = {
     const resp = Object.values((s.responses||{})[slide.id]||{});
     $('stage-count').textContent = `${resp.length} response${resp.length!==1?'s':''} · question ${s.current+1}/${s.slides.length}`;
     const viz = $('stage-viz');
+    const revealed = !!((s.revealed||{})[slide.id]);
+    $('reveal-btn').classList.toggle('hidden', !(slide.type==='choice' && slide.quiz && !revealed));
     if(!resp.length && slide.type!=='choice' && slide.type!=='scale'){ viz.innerHTML = '<p class="waiting">Waiting for responses…</p>'; return; }
     if(slide.type==='choice'){
-      const counts = slide.options.map(o=>resp.filter(r=>r===o).length);
-      const total = Math.max(resp.length,1), max = Math.max(...counts,1);
+      const vals = resp.map(r=> (r && typeof r==='object' && !Array.isArray(r)) ? r.choice : r);
+      const counts = slide.options.map(o=>vals.filter(v=>v===o).length);
+      const total = Math.max(vals.length,1), max = Math.max(...counts,1);
       viz.innerHTML = '<div class="hbar">'+slide.options.map((o,i)=>{
         const pct = Math.round(100*counts[i]/total);
-        return `<div class="row"><div class="opt">${esc(o)}</div>
-          <div class="track"><div class="fill" style="width:${Math.max(100*counts[i]/max, counts[i]?8:0)}%;background:${BAR_COLORS[i%BAR_COLORS.length]}">${counts[i]||''}</div></div>
+        const isC = slide.quiz && revealed && i===(slide.correct||0);
+        return `<div class="row${isC?' correct':''}"><div class="opt">${esc(o)}${isC?'<span class="tick">✓</span>':''}</div>
+          <div class="track"><div class="fill" style="width:${Math.max(100*counts[i]/max, counts[i]?8:0)}%;background:${isC?'var(--mint)':BAR_COLORS[i%BAR_COLORS.length]}">${counts[i]||''}</div></div>
           <div class="pct">${pct}%</div></div>`;
       }).join('')+'</div>';
     }
@@ -551,6 +602,51 @@ const app = {
     }
   },
 
+  reveal(){ if(this.session) store.setRevealed(this.code, this.session.slides[this.session.current].id); },
+  computeScores(){
+    const s=this.session, scores={};
+    if(!s) return [];
+    s.slides.forEach(sl=>{
+      if(sl.type!=='choice'||!sl.quiz) return;
+      const correct = sl.options[sl.correct||0];
+      Object.values((s.responses||{})[sl.id]||{}).forEach(r=>{
+        if(r && typeof r==='object' && !Array.isArray(r)){
+          const n=String(r.name||'Anonymous').slice(0,24);
+          scores[n] = scores[n]||0;
+          if(r.choice===correct) scores[n]+=100;
+        }
+      });
+    });
+    return Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+  },
+  toggleLead(){
+    const o=$('lead-overlay');
+    if(!o.classList.contains('hidden')){ o.classList.add('hidden'); return; }
+    const rows=this.computeScores().slice(0,10);
+    $('lead-list').innerHTML = rows.length
+      ? rows.map(([n,p],i)=>`<div class="lead-row"><span><span class="rank">#${i+1}</span>${esc(n)}</span><span class="pts">${p} pts</span></div>`).join('')
+      : '<p class="waiting">No scored answers yet.</p>';
+    o.classList.remove('hidden');
+  },
+  exportCSV(){
+    const s=this.session; if(!s){ toast('Start presenting first.'); return; }
+    const rows=[['Question #','Question','Type','Participant','Response','Correct?']];
+    s.slides.forEach((sl,i)=>{
+      const correct = (sl.type==='choice'&&sl.quiz) ? sl.options[sl.correct||0] : null;
+      Object.values((s.responses||{})[sl.id]||{}).forEach(r=>{
+        let name='', val=r;
+        if(r && typeof r==='object' && !Array.isArray(r)){ name=r.name||''; val=r.choice; }
+        if(Array.isArray(val)) val=val.join('; ');
+        rows.push([i+1, sl.question, TYPE_LABELS[sl.type], name, String(val==null?'':val), correct!=null?(val===correct?'yes':'no'):'']);
+      });
+    });
+    const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\r\n');
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+    a.download=(s.title||'pulsedeck').replace(/\W+/g,'-').toLowerCase()+'-results.csv';
+    a.click(); URL.revokeObjectURL(a.href);
+  },
+
   /* ----- audience ----- */
   async join(){
     const code = $('join-code').value.trim().toUpperCase();
@@ -559,6 +655,7 @@ const app = {
     if(!sess || sess.state!=='live'){ toast('No live session found for that code.'); return; }
     this.audience.code = code;
     this.audience.answered = JSON.parse(sessionStorage.getItem('pd-ans-'+code)||'{}');
+    this.audience.name = sessionStorage.getItem('pd-name-'+code)||null;
     $('aud-code').textContent = code;
     if(this.audience.unsub) this.audience.unsub();
     this.audience.unsub = store.onSession(code, s=>{ this.audience.session=s; this.renderAudience(); });
@@ -569,6 +666,13 @@ const app = {
     if(!s || s.state==='ended'){
       card.innerHTML = `<div class="thanks"><div class="big">👏</div><p>This session has ended. Thanks for taking part!</p>
         <button class="btn" style="margin-top:1.2rem" onclick="app.goHome()">Back to home</button></div>`;
+      return;
+    }
+    if(s.hasQuiz && !this.audience.name){
+      card.innerHTML = `<span class="tag">Quiz session</span>
+        <div class="aud-q" style="margin-top:.6rem">Pick a nickname for the leaderboard</div>
+        <input class="field" id="nick" maxlength="24" placeholder="e.g. Nitin" autocomplete="off">
+        <button class="btn big" style="width:100%;margin-top:.8rem" onclick="app.setName()">Let's go</button>`;
       return;
     }
     const slide = s.slides[s.current];
@@ -614,9 +718,18 @@ const app = {
     if(!t){ toast('Write something first.'); return; }
     this.submit(t);
   },
+  setName(){
+    const n = $('nick').value.trim();
+    if(!n){ toast('Enter a nickname first.'); return; }
+    this.audience.name = n;
+    sessionStorage.setItem('pd-name-'+this.audience.code, n);
+    this.renderAudience();
+  },
   async submit(value){
     const s = this.audience.session, slide = s.slides[s.current];
-    await store.pushResponse(this.audience.code, slide.id, value);
+    let payload = value;
+    if(slide.type==='choice' && slide.quiz) payload = {name: this.audience.name||'Anonymous', choice: value};
+    await store.pushResponse(this.audience.code, slide.id, payload);
     this.audience.answered[slide.id] = true;
     sessionStorage.setItem('pd-ans-'+this.audience.code, JSON.stringify(this.audience.answered));
     this.audience.pick = null;
