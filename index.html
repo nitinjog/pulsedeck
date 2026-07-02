@@ -363,7 +363,7 @@ const store = makeAdapter();
 const $ = id => document.getElementById(id);
 const esc = s => String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const BAR_COLORS = getComputedStyle(document.documentElement).getPropertyValue('--bar-colors').split(',');
-function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),2600); }
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),4200); }
 function uid(){ return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function genCode(){ const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<6;i++) c+=A[Math.floor(Math.random()*A.length)]; return c; }
 const TYPE_LABELS = {choice:'Multiple choice', cloud:'Word cloud', scale:'Rating scale', open:'Open text'};
@@ -511,8 +511,14 @@ const app = {
   /* ----- presenting ----- */
   async startPresenting(){
     this.saveDeck();
-    const bad = this.deck.slides.find(s=>!s.question.trim() || (s.type==='choice' && s.options.filter(o=>o.trim()).length<2));
-    if(bad){ toast('Every question needs text (and choices need ≥2 options).'); return; }
+    const badIdx = this.deck.slides.findIndex(s=>!s.question.trim() || (s.type==='choice' && s.options.filter(o=>o.trim()).length<2));
+    if(badIdx>=0){
+      const b = this.deck.slides[badIdx];
+      const why = !b.question.trim() ? 'needs a question' : 'needs at least 2 filled options';
+      this.openBuilder(); this.activeSlide = badIdx; this.renderBuilder();
+      toast('Can\'t present yet: question '+(badIdx+1)+' '+why+'.');
+      return;
+    }
     this.code = genCode();
     const session = {
       state:'live', current:0,
