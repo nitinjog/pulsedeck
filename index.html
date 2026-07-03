@@ -221,9 +221,8 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
     <div class="door">
       <span class="tag">Present</span>
       <h2>Host a survey</h2>
-      <p>Build a deck of questions — multiple choice, word clouds, rating scales, open text — then present it live.</p>
-      <button class="btn big" onclick="app.newDeck()">＋ New survey</button>
-      <div id="saved-decks" class="saved-list"></div>
+      <p>Build, edit and present surveys from the admin panel. Sign in to manage your decks and run a live session.</p>
+      <button class="btn big" onclick="app.openAdmin()">⚙ Host / Admin sign in</button>
     </div>
     <div class="door">
       <span class="tag">Participate</span>
@@ -236,7 +235,6 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
     </div>
   </div>
   <p class="mode-note" id="mode-note"></p>
-  <p style="text-align:center;margin:-1.5rem 0 2.5rem"><button class="btn ghost mini" onclick="app.openAdmin()">⚙ Admin panel</button></p>
 </div>
 
 <!-- ================= ADMIN ================= -->
@@ -502,17 +500,8 @@ const app = {
     $('mode-note').innerHTML = store.mode==='live'
       ? '<b>Live mode:</b> connected to Firebase — participants can join from any device on the code above.'
       : '<b>Demo mode (no setup):</b> sessions sync across tabs on <b>this device only</b>. To go live across phones, host this file and add your free Firebase config — see the README.';
-    const decks = loadDecks();
-    $('saved-decks').innerHTML = decks.length ? decks.map((d,i)=>`
-      <div class="saved-item">
-        <div><div class="nm">${esc(d.title||'Untitled survey')}</div>
-        <div class="meta">${d.slides.length} question${d.slides.length!==1?'s':''}</div></div>
-        <div class="acts">
-          <button class="btn mini" onclick="app.openDeck(${i})">Edit</button>
-          <button class="btn ghost mini" onclick="app.presentDeck(${i})">Present</button>
-          <button class="btn warn mini" onclick="app.deleteDeck(${i})">✕</button>
-        </div>
-      </div>`).join('') : '';
+    // Survey list intentionally NOT shown on the public home page.
+    // All survey management (edit/present/delete) lives in the passcode-protected admin panel.
   },
 
   newDeck(){
