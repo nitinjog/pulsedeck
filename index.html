@@ -246,10 +246,12 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
     <span style="font-family:var(--disp);font-size:1.15rem;font-weight:600;flex:1">⚙ Admin panel</span>
   </div>
   <div id="admin-lock" class="admin-wrap">
-    <div class="admin-card" style="max-width:26rem;margin:3rem auto">
-      <h3>Enter admin passcode</h3>
-      <input class="field" id="admin-pass" type="password" style="margin-top:.8rem" placeholder="Passcode" onkeydown="if(event.key==='Enter')app.adminUnlock()">
-      <button class="btn big" style="width:100%;margin-top:.8rem" onclick="app.adminUnlock()">Unlock</button>
+    <div class="admin-card" style="max-width:26rem;margin:3rem auto" id="admin-login-card">
+      <h3 id="admin-login-title">Admin sign in</h3>
+      <p class="admin-sub" id="admin-login-sub">Enter your admin username and password.</p>
+      <input class="field" id="admin-user" style="margin-bottom:.5rem" placeholder="Username" autocomplete="off">
+      <input class="field" id="admin-pass" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')app.adminLogin()">
+      <button class="btn big" style="width:100%;margin-top:.8rem" id="admin-login-btn" onclick="app.adminLogin()">Sign in</button>
     </div>
   </div>
   <div id="admin-body" class="admin-wrap hidden">
@@ -276,6 +278,26 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
         <button class="btn warn" onclick="app.clearSessions('others')">Delete all except live</button>
         <button class="btn warn" onclick="app.clearSessions('all')">Delete ALL sessions</button>
         <button class="btn ghost" onclick="app.refreshAdmin()">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="admin-card" id="admin-users-card">
+      <h3>Admin users <span id="admin-whoami" class="tag"></span></h3>
+      <p class="admin-sub" id="admin-users-sub">Manage who can access this panel. Passwords are stored hashed. This is a convenience gate, not strong security.</p>
+      <div id="admin-selfpw" style="margin-bottom:1rem">
+        <label class="lbl">Change my password</label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <input class="field" id="self-newpw" type="password" style="flex:1;min-width:160px" placeholder="New password">
+          <button class="btn" onclick="app.changeMyPassword()">Update</button>
+        </div>
+      </div>
+      <div id="admin-owner-tools" class="hidden">
+        <label class="lbl">Add / update an admin</label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.6rem">
+          <input class="field" id="new-admin-user" style="flex:1;min-width:120px" placeholder="Username" autocomplete="off">
+          <input class="field" id="new-admin-pw" type="password" style="flex:1;min-width:120px" placeholder="Password">
+          <button class="btn" onclick="app.addAdmin()">Save</button>
+        </div>
+        <div id="admin-users-list" class="admin-list"></div>
       </div>
     </div>
   </div>
@@ -395,6 +417,9 @@ function makeAdapter(){
         for(const c of codes){ await db.ref('sessions/'+c).remove(); }
         return codes.length;
       },
+      async listAdmins(){ const s = await db.ref('admins').get(); return s.val()||{}; },
+      async setAdmin(username,rec){ await db.ref('admins/'+username).set(rec); },
+      async deleteAdmin(username){ await db.ref('admins/'+username).remove(); },
       onSession(code,cb){
         const ref = db.ref('sessions/'+code);
         const h = ref.on('value', snap=>cb(snap.val()));
@@ -424,6 +449,9 @@ function makeAdapter(){
     async listSessions(){ const out={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('pd-sess-')){ out[k.slice(8)] = JSON.parse(localStorage.getItem(k)); } } return out; },
     async deleteSession(c){ localStorage.removeItem('pd-sess-'+c); },
     async deleteAllSessions(exceptCode){ const codes=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('pd-sess-')) codes.push(k.slice(8)); } const del=codes.filter(c=>c!==exceptCode); del.forEach(c=>localStorage.removeItem('pd-sess-'+c)); return del.length; },
+    async listAdmins(){ return JSON.parse(localStorage.getItem('pd-admins')||'{}'); },
+    async setAdmin(username,rec){ const a=JSON.parse(localStorage.getItem('pd-admins')||'{}'); a[username]=rec; localStorage.setItem('pd-admins',JSON.stringify(a)); },
+    async deleteAdmin(username){ const a=JSON.parse(localStorage.getItem('pd-admins')||'{}'); delete a[username]; localStorage.setItem('pd-admins',JSON.stringify(a)); },
     onSession(c,cb){
       const h = e=>cb(read(c));
       chan(c).addEventListener('message',h);
@@ -746,23 +774,141 @@ const app = {
   },
 
 
-  /* ----- admin ----- */
-  openAdmin(){
-    this._adminAuthed = this._adminAuthed || false;
-    $('admin-lock').classList.toggle('hidden', this._adminAuthed);
-    $('admin-body').classList.toggle('hidden', !this._adminAuthed);
-    this.show('view-admin');
-    if(this._adminAuthed) this.refreshAdmin();
-    else setTimeout(()=>$('admin-pass') && $('admin-pass').focus(), 50);
+  /* ----- admin auth (multi-user) ----- */
+  async _hash(str){
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
   },
-  adminUnlock(){
-    const v = $('admin-pass').value;
-    if(v !== ADMIN_PASSCODE){ toast('Incorrect passcode.'); return; }
-    this._adminAuthed = true;
-    $('admin-pass').value = '';
+  async openAdmin(){
+    this.show('view-admin');
+    if(this._admin){ this._enterAdmin(); return; }
+    $('admin-lock').classList.remove('hidden');
+    $('admin-body').classList.add('hidden');
+    // decide login vs bootstrap based on whether any admins exist
+    let admins = {};
+    try { admins = await store.listAdmins(); }
+    catch(e){ /* if rules block reading admins, treat as none and let bootstrap/login try */ }
+    this._bootstrap = !admins || Object.keys(admins).length===0;
+    if(this._bootstrap){
+      $('admin-login-title').textContent = 'Create first admin (owner)';
+      $('admin-login-sub').innerHTML = 'No admins exist yet. Enter the master passcode from the file, then choose your owner username and password.';
+      $('admin-login-card').innerHTML = `
+        <h3 id="admin-login-title">Create first admin (owner)</h3>
+        <p class="admin-sub">No admins exist yet. Enter the file master passcode, then pick your owner login.</p>
+        <input class="field" id="boot-master" type="password" style="margin-bottom:.5rem" placeholder="Master passcode (from file)">
+        <input class="field" id="admin-user" style="margin-bottom:.5rem" placeholder="Choose a username" autocomplete="off">
+        <input class="field" id="admin-pass" type="password" placeholder="Choose a password" onkeydown="if(event.key==='Enter')app.adminBootstrap()">
+        <button class="btn big" style="width:100%;margin-top:.8rem" onclick="app.adminBootstrap()">Create owner & sign in</button>`;
+    } else {
+      setTimeout(()=>$('admin-user') && $('admin-user').focus(), 50);
+    }
+  },
+  async adminBootstrap(){
+    const master = $('boot-master').value;
+    if(master !== ADMIN_PASSCODE){ toast('Master passcode is incorrect.'); return; }
+    const u = ($('admin-user').value||'').trim();
+    const pw = $('admin-pass').value||'';
+    if(u.length<2 || pw.length<4){ toast('Username min 2 chars, password min 4.'); return; }
+    try {
+      await store.setAdmin(u, { hash: await this._hash(pw), role:'owner' });
+    } catch(e){
+      toast(/permission|denied/i.test(e.message||'') ? 'Firebase blocked writing admins — add read/write rules for the admins node.' : 'Could not create admin: '+e.message);
+      return;
+    }
+    this._admin = { username:u, role:'owner' };
+    this._enterAdmin();
+  },
+  async adminLogin(){
+    const u = ($('admin-user').value||'').trim();
+    const pw = $('admin-pass').value||'';
+    if(!u || !pw){ toast('Enter username and password.'); return; }
+    let admins = {};
+    try { admins = await store.listAdmins(); }
+    catch(e){ toast(/permission|denied/i.test(e.message||'') ? 'Firebase blocked reading admins — check your rules for the admins node.' : 'Login failed: '+e.message); return; }
+    const rec = admins[u];
+    if(!rec || rec.hash !== await this._hash(pw)){ toast('Incorrect username or password.'); return; }
+    this._admin = { username:u, role:rec.role||'admin' };
+    this._enterAdmin();
+  },
+  _enterAdmin(){
+    $('admin-pass') && ($('admin-pass').value='');
     $('admin-lock').classList.add('hidden');
     $('admin-body').classList.remove('hidden');
+    const isOwner = this._admin.role==='owner';
+    $('admin-whoami').textContent = this._admin.username + (isOwner?' · owner':'');
+    $('admin-owner-tools').classList.toggle('hidden', !isOwner);
     this.refreshAdmin();
+    this.renderAdminUsers();
+  },
+  async changeMyPassword(){
+    const pw = $('self-newpw').value||'';
+    if(pw.length<4){ toast('Password must be at least 4 characters.'); return; }
+    try {
+      const admins = await store.listAdmins();
+      const rec = admins[this._admin.username] || { role:this._admin.role };
+      rec.hash = await this._hash(pw);
+      await store.setAdmin(this._admin.username, rec);
+      $('self-newpw').value='';
+      toast('Your password was updated.');
+    } catch(e){ toast('Could not update password: '+e.message); }
+  },
+  async renderAdminUsers(){
+    if(this._admin.role!=='owner') return;
+    const listEl = $('admin-users-list');
+    let admins = {};
+    try { admins = await store.listAdmins(); }
+    catch(e){ listEl.innerHTML = '<p class="admin-sub">Could not read admins: '+esc(e.message)+'</p>'; return; }
+    const names = Object.keys(admins);
+    listEl.innerHTML = names.map(u=>{
+      const r = admins[u]||{};
+      const isSelf = u===this._admin.username;
+      const isOwner = r.role==='owner';
+      return `<div class="admin-item">
+        <div><div class="nm">${esc(u)} ${isOwner?'<span class="tag">owner</span>':''}${isSelf?' <span class="tag">you</span>':''}</div>
+        <div class="meta">role: ${esc(r.role||'admin')}</div></div>
+        <div class="acts">
+          <button class="btn ghost mini" onclick="app.resetAdminPassword('${esc(u)}')">Reset password</button>
+          <button class="btn warn mini" ${(isSelf||isOwner)?'disabled title="Owners and yourself can\'t be removed here"':''} onclick="app.removeAdmin('${esc(u)}')">Remove</button>
+        </div>
+      </div>`;
+    }).join('') || '<p class="admin-sub">No admins.</p>';
+  },
+  async addAdmin(){
+    if(this._admin.role!=='owner'){ toast('Only the owner can add admins.'); return; }
+    const u = ($('new-admin-user').value||'').trim();
+    const pw = $('new-admin-pw').value||'';
+    if(u.length<2 || pw.length<4){ toast('Username min 2 chars, password min 4.'); return; }
+    try {
+      const admins = await store.listAdmins();
+      const existing = admins[u];
+      const role = (existing && existing.role) ? existing.role : 'admin';
+      await store.setAdmin(u, { hash: await this._hash(pw), role });
+      $('new-admin-user').value=''; $('new-admin-pw').value='';
+      toast('Admin "'+u+'" saved.');
+      this.renderAdminUsers();
+    } catch(e){ toast('Could not save admin: '+e.message); }
+  },
+  async resetAdminPassword(u){
+    if(this._admin.role!=='owner'){ return; }
+    const pw = prompt('New password for "'+u+'" (min 4 chars):');
+    if(pw===null) return;
+    if(pw.length<4){ toast('Password too short.'); return; }
+    try {
+      const admins = await store.listAdmins();
+      const rec = admins[u] || { role:'admin' };
+      rec.hash = await this._hash(pw);
+      await store.setAdmin(u, rec);
+      toast('Password reset for "'+u+'".');
+    } catch(e){ toast('Could not reset: '+e.message); }
+  },
+  async removeAdmin(u){
+    if(this._admin.role!=='owner'){ return; }
+    if(u===this._admin.username){ toast("You can't remove yourself."); return; }
+    const admins = await store.listAdmins();
+    if((admins[u]||{}).role==='owner'){ toast("Owners can't be removed here."); return; }
+    if(!confirm('Remove admin "'+u+'"?')) return;
+    try { await store.deleteAdmin(u); toast('Removed "'+u+'".'); this.renderAdminUsers(); }
+    catch(e){ toast('Could not remove: '+e.message); }
   },
   renderAdminDecks(){
     const decks = loadDecks();
