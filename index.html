@@ -29,6 +29,7 @@
   --body:'Inter',system-ui,sans-serif;
   --mono:'IBM Plex Mono',monospace;
   --bar-colors:#7C6CFF,#FFB648,#3DDC97,#FF5D73,#4DB8FF,#C77DFF,#FF9F68,#6EE7B7;
+  --quiz-colors:#7C6CFF,#FFB648,#4DB8FF,#C77DFF,#FF9F68,#9B8CFF,#5AA9E6,#E0A458;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -167,7 +168,8 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 .qrbox span{font-size:.58rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
 /* quiz reveal */
 .hbar .row.correct .fill{box-shadow:inset 0 0 0 3px #fff}
-.hbar .opt .tick{color:var(--mint);font-weight:700;margin-left:.4rem}
+.hbar .opt .tick{color:var(--amber);font-weight:700;margin-left:.4rem}
+.hbar .opt .tick::after{content:' correct'}
 /* leaderboard */
 #lead-overlay{position:fixed;inset:0;background:rgba(23,18,51,.94);z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;cursor:pointer}
 #lead-overlay h2{font-family:var(--disp);font-size:2.2rem;color:var(--amber);margin-bottom:1.4rem}
@@ -178,6 +180,18 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 .lead-row:nth-child(1){background:var(--amber)}
 .lead-row:nth-child(2){background:#EEEBFF}
 .lead-row:nth-child(3){background:#E4FBF1}
+
+/* ---------- admin ---------- */
+#view-admin{min-height:100vh;display:flex;flex-direction:column;background:var(--paper)}
+.admin-wrap{max-width:52rem;margin:0 auto;padding:1.6rem 1.2rem;width:100%}
+.admin-card{background:#fff;border:1.5px solid var(--line);border-radius:var(--radius);padding:1.4rem 1.5rem;margin-bottom:1.2rem;box-shadow:0 4px 18px rgba(23,18,51,.05)}
+.admin-card h3{font-family:var(--disp);font-size:1.15rem;margin-bottom:.3rem}
+.admin-sub{color:var(--ink-soft);font-size:.86rem;line-height:1.5;margin-bottom:1rem}
+.admin-list{margin-top:1rem;display:flex;flex-direction:column;gap:.5rem}
+.admin-item{display:flex;justify-content:space-between;align-items:center;gap:.8rem;border:1.5px solid var(--line);border-radius:10px;padding:.6rem .9rem;flex-wrap:wrap}
+.admin-item .nm{font-weight:600}
+.admin-item .meta{font-size:.76rem;color:var(--ink-soft);font-family:var(--mono)}
+.admin-item .acts{display:flex;gap:.35rem;flex-wrap:wrap}
 
 /* toast */
 #toast{position:fixed;bottom:1.4rem;left:50%;transform:translateX(-50%) translateY(20px);background:var(--ink);color:#fff;padding:.7rem 1.2rem;border-radius:10px;font-size:.9rem;opacity:0;pointer-events:none;transition:.25s;z-index:99}
@@ -222,6 +236,49 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
     </div>
   </div>
   <p class="mode-note" id="mode-note"></p>
+  <p style="text-align:center;margin:-1.5rem 0 2.5rem"><button class="btn ghost mini" onclick="app.openAdmin()">⚙ Admin panel</button></p>
+</div>
+
+<!-- ================= ADMIN ================= -->
+<div id="view-admin" class="hidden">
+  <div class="topbar">
+    <button class="btn ghost mini" style="color:#fff;border-color:#4A4180" onclick="app.goHome()">← Home</button>
+    <span style="font-family:var(--disp);font-size:1.15rem;font-weight:600;flex:1">⚙ Admin panel</span>
+  </div>
+  <div id="admin-lock" class="admin-wrap">
+    <div class="admin-card" style="max-width:26rem;margin:3rem auto">
+      <h3>Enter admin passcode</h3>
+      <input class="field" id="admin-pass" type="password" style="margin-top:.8rem" placeholder="Passcode" onkeydown="if(event.key==='Enter')app.adminUnlock()">
+      <button class="btn big" style="width:100%;margin-top:.8rem" onclick="app.adminUnlock()">Unlock</button>
+    </div>
+  </div>
+  <div id="admin-body" class="admin-wrap hidden">
+    <div class="admin-card">
+      <h3>Surveys</h3>
+      <p class="admin-sub">Build, edit, present, duplicate or delete your saved surveys.</p>
+      <button class="btn" onclick="app.newDeck()">＋ New survey</button>
+      <div id="admin-decks" class="admin-list"></div>
+    </div>
+    <div class="admin-card">
+      <h3>Results export</h3>
+      <p class="admin-sub">Download an aggregated report for any session held in Firebase.</p>
+      <select class="field" id="admin-sess-select"></select>
+      <div style="display:flex;gap:.5rem;margin-top:.7rem;flex-wrap:wrap">
+        <button class="btn" onclick="app.exportExcel($('admin-sess-select').value)">⬇ Excel (.xlsx)</button>
+        <button class="btn" onclick="app.exportPDF($('admin-sess-select').value)">⬇ PDF report</button>
+      </div>
+    </div>
+    <div class="admin-card">
+      <h3>Firebase cleanup</h3>
+      <p class="admin-sub">Old sessions accumulate and count toward your free tier. Remove them here. <b>This cannot be undone.</b></p>
+      <div id="admin-sess-list" class="admin-list"></div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem;flex-wrap:wrap">
+        <button class="btn warn" onclick="app.clearSessions('others')">Delete all except live</button>
+        <button class="btn warn" onclick="app.clearSessions('all')">Delete ALL sessions</button>
+        <button class="btn ghost" onclick="app.refreshAdmin()">↻ Refresh</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ================= BUILDER ================= -->
@@ -283,6 +340,9 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
 <script>
 /* ============================================================
@@ -293,6 +353,9 @@ label.lbl{display:block;font-size:.8rem;font-weight:600;color:var(--ink-soft);ma
    Leave as null to run in same-device demo mode (works across
    browser tabs on one machine — great for testing).
 ============================================================ */
+/* Admin panel passcode — change this to whatever you like. */
+const ADMIN_PASSCODE = "pulse2026";
+
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDdAQCQstrpRJ6yVsnVFr-1smmIZvLdqZE",
   authDomain: "pulsedeck-667b8.firebaseapp.com",
@@ -324,6 +387,14 @@ function makeAdapter(){
       async endSession(code){ await db.ref('sessions/'+code+'/state').set('ended'); },
       async pushResponse(code,slideId,value){ await db.ref('sessions/'+code+'/responses/'+slideId).push(value); },
       async getSession(code){ const s = await db.ref('sessions/'+code).get(); return s.val(); },
+      async listSessions(){ const s = await db.ref('sessions').get(); return s.val()||{}; },
+      async deleteSession(code){ await db.ref('sessions/'+code).remove(); },
+      async deleteAllSessions(exceptCode){
+        const all = (await db.ref('sessions').get()).val()||{};
+        const codes = Object.keys(all).filter(c=>c!==exceptCode);
+        for(const c of codes){ await db.ref('sessions/'+c).remove(); }
+        return codes.length;
+      },
       onSession(code,cb){
         const ref = db.ref('sessions/'+code);
         const h = ref.on('value', snap=>cb(snap.val()));
@@ -350,6 +421,9 @@ function makeAdapter(){
       write(c,d);
     },
     async getSession(c){ return read(c); },
+    async listSessions(){ const out={}; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('pd-sess-')){ out[k.slice(8)] = JSON.parse(localStorage.getItem(k)); } } return out; },
+    async deleteSession(c){ localStorage.removeItem('pd-sess-'+c); },
+    async deleteAllSessions(exceptCode){ const codes=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('pd-sess-')) codes.push(k.slice(8)); } const del=codes.filter(c=>c!==exceptCode); del.forEach(c=>localStorage.removeItem('pd-sess-'+c)); return del.length; },
     onSession(c,cb){
       const h = e=>cb(read(c));
       chan(c).addEventListener('message',h);
@@ -366,6 +440,7 @@ const store = makeAdapter();
 const $ = id => document.getElementById(id);
 const esc = s => String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 const BAR_COLORS = getComputedStyle(document.documentElement).getPropertyValue('--bar-colors').split(',');
+const QUIZ_COLORS = getComputedStyle(document.documentElement).getPropertyValue('--quiz-colors').split(',');
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),4200); }
 function uid(){ return 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function genCode(){ const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let i=0;i<6;i++) c+=A[Math.floor(Math.random()*A.length)]; return c; }
@@ -382,7 +457,7 @@ const app = {
   audience:{ code:null, unsub:null, session:null, answered:{}, pick:null },
 
   show(view){
-    ['view-home','view-builder','view-present','view-audience'].forEach(v=>$(v).classList.add('hidden'));
+    ['view-home','view-builder','view-present','view-audience','view-admin'].forEach(v=>$(v).classList.add('hidden'));
     $(view).classList.remove('hidden');
     window.scrollTo(0,0);
   },
@@ -590,11 +665,12 @@ const app = {
       const vals = resp.map(r=> (r && typeof r==='object' && !Array.isArray(r)) ? r.choice : r);
       const counts = slide.options.map(o=>vals.filter(v=>v===o).length);
       const total = Math.max(vals.length,1), max = Math.max(...counts,1);
+      const palette = slide.quiz ? QUIZ_COLORS : BAR_COLORS;
       viz.innerHTML = '<div class="hbar">'+slide.options.map((o,i)=>{
         const pct = Math.round(100*counts[i]/total);
         const isC = slide.quiz && revealed && i===(slide.correct||0);
         return `<div class="row${isC?' correct':''}"><div class="opt">${esc(o)}${isC?'<span class="tick">✓</span>':''}</div>
-          <div class="track"><div class="fill" style="width:${Math.max(100*counts[i]/max, counts[i]?8:0)}%;background:${isC?'var(--mint)':BAR_COLORS[i%BAR_COLORS.length]}">${counts[i]||''}</div></div>
+          <div class="track"><div class="fill" style="width:${Math.max(100*counts[i]/max, counts[i]?8:0)}%;background:${palette[i%palette.length]}">${counts[i]||''}</div></div>
           <div class="pct">${pct}%</div></div>`;
       }).join('')+'</div>';
     }
@@ -667,6 +743,196 @@ const app = {
     a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
     a.download=(s.title||'pulsedeck').replace(/\W+/g,'-').toLowerCase()+'-results.csv';
     a.click(); URL.revokeObjectURL(a.href);
+  },
+
+
+  /* ----- admin ----- */
+  openAdmin(){
+    this._adminAuthed = this._adminAuthed || false;
+    $('admin-lock').classList.toggle('hidden', this._adminAuthed);
+    $('admin-body').classList.toggle('hidden', !this._adminAuthed);
+    this.show('view-admin');
+    if(this._adminAuthed) this.refreshAdmin();
+    else setTimeout(()=>$('admin-pass') && $('admin-pass').focus(), 50);
+  },
+  adminUnlock(){
+    const v = $('admin-pass').value;
+    if(v !== ADMIN_PASSCODE){ toast('Incorrect passcode.'); return; }
+    this._adminAuthed = true;
+    $('admin-pass').value = '';
+    $('admin-lock').classList.add('hidden');
+    $('admin-body').classList.remove('hidden');
+    this.refreshAdmin();
+  },
+  renderAdminDecks(){
+    const decks = loadDecks();
+    $('admin-decks').innerHTML = decks.length ? decks.map((d,i)=>`
+      <div class="admin-item">
+        <div><div class="nm">${esc(d.title||'Untitled survey')}</div>
+        <div class="meta">${d.slides.length} question${d.slides.length!==1?'s':''}</div></div>
+        <div class="acts">
+          <button class="btn mini" onclick="app.openDeck(${i})">Edit</button>
+          <button class="btn ghost mini" onclick="app.presentDeck(${i})">Present</button>
+          <button class="btn ghost mini" onclick="app.duplicateDeck(${i})">Duplicate</button>
+          <button class="btn warn mini" onclick="app.deleteDeck(${i});app.refreshAdmin()">✕</button>
+        </div>
+      </div>`).join('') : '<p class="admin-sub">No surveys yet.</p>';
+  },
+  duplicateDeck(i){
+    const decks = loadDecks(); const orig = decks[i];
+    const copy = JSON.parse(JSON.stringify(orig));
+    copy.id = uid(); copy.title = (orig.title||'Untitled survey')+' (copy)';
+    copy.slides.forEach(s=>s.id=uid());
+    decks.splice(i+1,0,copy); saveDecks(decks); this.refreshAdmin();
+  },
+  async refreshAdmin(){
+    this.renderAdminDecks();
+    const listEl = $('admin-sess-list'), selEl = $('admin-sess-select');
+    listEl.innerHTML = '<p class="admin-sub">Loading sessions…</p>';
+    let sessions = {};
+    try { sessions = await store.listSessions(); }
+    catch(e){ listEl.innerHTML = '<p class="admin-sub">Could not read sessions: '+esc(e.message)+'</p>'; return; }
+    const codes = Object.keys(sessions);
+    const liveCode = (this.session && this.code) ? this.code : null;
+    if(!codes.length){ listEl.innerHTML = '<p class="admin-sub">No sessions stored in Firebase. 🎉</p>'; selEl.innerHTML = '<option value="">No sessions</option>'; return; }
+    listEl.innerHTML = codes.map(c=>{
+      const s = sessions[c]||{};
+      let n = 0; const r = s.responses||{}; for(const k in r) n += Object.keys(r[k]||{}).length;
+      const isLive = c===liveCode || s.state==='live';
+      return `<div class="admin-item">
+        <div><div class="nm">${esc(s.title||'Untitled')} ${isLive?'<span class="tag">live</span>':''}</div>
+        <div class="meta">${c} · ${n} response${n!==1?'s':''}</div></div>
+        <div class="acts"><button class="btn warn mini" onclick="app.deleteOneSession('${c}')">Delete</button></div>
+      </div>`;
+    }).join('');
+    selEl.innerHTML = codes.map(c=>`<option value="${c}">${esc(sessions[c].title||'Untitled')} — ${c}</option>`).join('');
+  },
+  async deleteOneSession(code){
+    if(!confirm('Delete session '+code+' permanently?')) return;
+    await store.deleteSession(code); toast('Deleted '+code+'.'); this.refreshAdmin();
+  },
+  async clearSessions(which){
+    const except = which==='others' ? (this.code||null) : null;
+    const msg = which==='others'
+      ? 'Delete ALL Firebase sessions except the live one? This cannot be undone.'
+      : 'Delete ALL Firebase sessions? This cannot be undone.';
+    if(!confirm(msg)) return;
+    try {
+      const removed = await store.deleteAllSessions(except);
+      toast('Removed '+removed+' session'+(removed!==1?'s':'')+'.');
+      this.refreshAdmin();
+    } catch(e){ toast('Cleanup failed: '+e.message); }
+  },
+
+  /* ----- aggregation + rich exports ----- */
+  async _loadSession(code){
+    if(this.session && this.code===code) return this.session;
+    return await store.getSession(code);
+  },
+  _aggregate(s){
+    // returns [{q, type, summary:[{label, count, pct}], avg, words:[[w,n]], texts:[...]}]
+    return s.slides.map((sl,i)=>{
+      const resp = Object.values((s.responses||{})[sl.id]||{});
+      const out = { idx:i+1, q:sl.question, type:sl.type, n:resp.length };
+      if(sl.type==='choice'){
+        const vals = resp.map(r=> (r&&typeof r==='object'&&!Array.isArray(r))?r.choice:r);
+        const total = Math.max(vals.length,1);
+        out.rows = sl.options.map(o=>{ const c=vals.filter(v=>v===o).length; return {label:o, count:c, pct:Math.round(100*c/total)}; });
+        if(sl.quiz){ out.correct = sl.options[sl.correct||0]; }
+      } else if(sl.type==='scale'){
+        const nums = resp.map(Number).filter(n=>!isNaN(n));
+        out.avg = nums.length ? (nums.reduce((a,b)=>a+b,0)/nums.length) : 0;
+        out.rows = [];
+        for(let v=sl.min;v<=sl.max;v++){ const c=nums.filter(n=>n===v).length; out.rows.push({label:String(v), count:c, pct:Math.round(100*c/Math.max(nums.length,1))}); }
+      } else if(sl.type==='cloud'){
+        const freq={}; resp.flat().forEach(w=>{ const k=String(w).trim().toLowerCase(); if(k) freq[k]=(freq[k]||0)+1; });
+        out.words = Object.entries(freq).sort((a,b)=>b[1]-a[1]);
+      } else if(sl.type==='open'){
+        out.texts = resp.map(r=> (r&&typeof r==='object')?JSON.stringify(r):String(r));
+      }
+      // leaderboard for whole deck attached on first quiz slide handled separately
+      return out;
+    });
+  },
+  _leaderboard(s){
+    const scores={};
+    s.slides.forEach(sl=>{
+      if(sl.type!=='choice'||!sl.quiz) return;
+      const correct = sl.options[sl.correct||0];
+      Object.values((s.responses||{})[sl.id]||{}).forEach(r=>{
+        if(r&&typeof r==='object'&&!Array.isArray(r)){ const n=String(r.name||'Anonymous').slice(0,24); scores[n]=scores[n]||0; if(r.choice===correct) scores[n]+=100; }
+      });
+    });
+    return Object.entries(scores).sort((a,b)=>b[1]-a[1]);
+  },
+  async exportExcel(code){
+    if(!code){ toast('No session selected.'); return; }
+    if(typeof XLSX==='undefined'){ toast('Excel library still loading, try again.'); return; }
+    const s = await this._loadSession(code);
+    if(!s){ toast('Session not found.'); return; }
+    const agg = this._aggregate(s);
+    const wb = XLSX.utils.book_new();
+    // Summary sheet
+    const summary = [['PulseDeck results', s.title||'Untitled'],['Session code', code],['Exported', new Date().toLocaleString()],[]];
+    agg.forEach(a=>{
+      summary.push(['Q'+a.idx, a.q]);
+      summary.push(['Type', TYPE_LABELS[a.type], 'Responses', a.n]);
+      if(a.rows){ summary.push(['Option','Count','%', a.correct?('Correct: '+a.correct):'']); a.rows.forEach(r=>summary.push([r.label, r.count, r.pct+'%'])); }
+      if(a.avg!==undefined) summary.push(['Average', a.avg.toFixed(2)]);
+      if(a.words){ summary.push(['Word','Mentions']); a.words.forEach(([w,n])=>summary.push([w,n])); }
+      if(a.texts){ summary.push(['Responses']); a.texts.forEach(t=>summary.push([t])); }
+      summary.push([]);
+    });
+    const lb = this._leaderboard(s);
+    if(lb.length){ summary.push(['Leaderboard']); summary.push(['Rank','Name','Points']); lb.forEach(([n,p],i)=>summary.push([i+1,n,p])); }
+    const ws1 = XLSX.utils.aoa_to_sheet(summary); ws1['!cols']=[{wch:22},{wch:40},{wch:12},{wch:16}];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+    // Raw sheet
+    const raw = [['Q#','Question','Type','Participant','Response','Correct?']];
+    s.slides.forEach((sl,i)=>{ const correct=(sl.type==='choice'&&sl.quiz)?sl.options[sl.correct||0]:null;
+      Object.values((s.responses||{})[sl.id]||{}).forEach(r=>{ let name='',val=r; if(r&&typeof r==='object'&&!Array.isArray(r)){name=r.name||'';val=r.choice;} if(Array.isArray(val))val=val.join('; '); raw.push([i+1,sl.question,TYPE_LABELS[sl.type],name,String(val==null?'':val),correct!=null?(val===correct?'yes':'no'):'']); });
+    });
+    const ws2 = XLSX.utils.aoa_to_sheet(raw); ws2['!cols']=[{wch:5},{wch:34},{wch:14},{wch:16},{wch:30},{wch:9}];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Raw responses');
+    XLSX.writeFile(wb, (s.title||'pulsedeck').replace(/\W+/g,'-').toLowerCase()+'-results.xlsx');
+  },
+  async exportPDF(code){
+    if(!code){ toast('No session selected.'); return; }
+    const JS = window.jspdf && window.jspdf.jsPDF;
+    if(!JS){ toast('PDF library still loading, try again.'); return; }
+    const s = await this._loadSession(code);
+    if(!s){ toast('Session not found.'); return; }
+    const agg = this._aggregate(s);
+    const doc = new JS({unit:'pt', format:'a4'});
+    const W = doc.internal.pageSize.getWidth();
+    doc.setFont('helvetica','bold'); doc.setFontSize(20); doc.setTextColor(30,24,54);
+    doc.text('PulseDeck results', 40, 50);
+    doc.setFontSize(12); doc.setFont('helvetica','normal'); doc.setTextColor(90,85,120);
+    doc.text((s.title||'Untitled')+'  ·  code '+code, 40, 70);
+    doc.text('Exported '+new Date().toLocaleString(), 40, 86);
+    let y = 110;
+    agg.forEach(a=>{
+      if(y > doc.internal.pageSize.getHeight()-120){ doc.addPage(); y=50; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(30,24,54);
+      doc.text('Q'+a.idx+'. '+a.q, 40, y, {maxWidth:W-80}); y+=8;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(120,120,140);
+      doc.text(TYPE_LABELS[a.type]+' · '+a.n+' responses'+(a.correct?(' · correct: '+a.correct):'')+(a.avg!==undefined?(' · avg '+a.avg.toFixed(2)):''), 40, y+10); y+=22;
+      let head, body;
+      if(a.rows){ head=[['Option','Count','%']]; body=a.rows.map(r=>[r.label,r.count,r.pct+'%']); }
+      else if(a.words){ head=[['Word','Mentions']]; body=a.words.map(([w,n])=>[w,n]); }
+      else if(a.texts){ head=[['Responses']]; body=a.texts.map(t=>[t]); }
+      if(body && body.length){
+        doc.autoTable({ startY:y, head, body, margin:{left:40,right:40}, styles:{fontSize:9,cellPadding:4}, headStyles:{fillColor:[124,108,255]}, theme:'striped' });
+        y = doc.lastAutoTable.finalY + 20;
+      } else { doc.setFontSize(9); doc.setTextColor(150,150,160); doc.text('No responses.',40,y); y+=24; }
+    });
+    const lb = this._leaderboard(s);
+    if(lb.length){
+      if(y > doc.internal.pageSize.getHeight()-120){ doc.addPage(); y=50; }
+      doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(30,24,54); doc.text('🏆 Leaderboard',40,y); y+=8;
+      doc.autoTable({ startY:y, head:[['Rank','Name','Points']], body:lb.map(([n,p],i)=>[i+1,n,p]), margin:{left:40,right:40}, styles:{fontSize:10,cellPadding:5}, headStyles:{fillColor:[255,182,72]} });
+    }
+    doc.save((s.title||'pulsedeck').replace(/\W+/g,'-').toLowerCase()+'-results.pdf');
   },
 
   /* ----- audience ----- */
