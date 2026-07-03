@@ -791,7 +791,15 @@ const app = {
     listEl.innerHTML = '<p class="admin-sub">Loading sessions…</p>';
     let sessions = {};
     try { sessions = await store.listSessions(); }
-    catch(e){ listEl.innerHTML = '<p class="admin-sub">Could not read sessions: '+esc(e.message)+'</p>'; return; }
+    catch(e){
+      const perm = /permission|denied/i.test(e.message||'');
+      const help = perm
+        ? 'Firebase denied reading the session list. In the Firebase console open Realtime Database → Rules and make sure <b>.read</b> and <b>.write</b> are set to true directly on the <b>sessions</b> node (not only inside $code), then Publish.'
+        : esc(e.message);
+      listEl.innerHTML = '<p class="admin-sub">Could not read sessions: '+help+'</p>';
+      selEl.innerHTML = '<option value="">Sessions unavailable — check Firebase rules</option>';
+      return;
+    }
     const codes = Object.keys(sessions);
     const liveCode = (this.session && this.code) ? this.code : null;
     if(!codes.length){ listEl.innerHTML = '<p class="admin-sub">No sessions stored in Firebase. 🎉</p>'; selEl.innerHTML = '<option value="">No sessions</option>'; return; }
@@ -821,7 +829,10 @@ const app = {
       const removed = await store.deleteAllSessions(except);
       toast('Removed '+removed+' session'+(removed!==1?'s':'')+'.');
       this.refreshAdmin();
-    } catch(e){ toast('Cleanup failed: '+e.message); }
+    } catch(e){
+      const perm = /permission|denied/i.test(e.message||'');
+      toast(perm ? 'Cleanup blocked by Firebase rules — set .read/.write=true on the sessions node.' : 'Cleanup failed: '+e.message);
+    }
   },
 
   /* ----- aggregation + rich exports ----- */
