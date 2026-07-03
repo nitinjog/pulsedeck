@@ -526,14 +526,27 @@ const app = {
       hasQuiz: this.deck.slides.some(s=>s.type==='choice'&&s.quiz),
       revealed:{},
       slides:this.deck.slides.map(s=>{
-        const opts = s.options ? s.options.filter(o=>o.trim()) : undefined;
-        const out = {...s, options:opts};
-        if(s.type==='choice') out.correct = Math.min(s.correct||0, (opts?opts.length:1)-1);
+        const out = { id:s.id, type:s.type, question:s.question };
+        if(s.type==='choice'){
+          out.options = (s.options||[]).filter(o=>o.trim());
+          out.quiz = !!s.quiz;
+          out.correct = Math.min(s.correct||0, Math.max(out.options.length-1,0));
+        }
+        if(s.type==='scale'){
+          out.min = s.min||1; out.max = s.max||5;
+          out.minLabel = s.minLabel||''; out.maxLabel = s.maxLabel||'';
+        }
         return out;
       }),
       responses:{}
     };
-    await store.createSession(this.code, session);
+    try {
+      await store.createSession(this.code, session);
+    } catch(err){
+      console.error('createSession failed', err);
+      toast('Could not start the live session: '+(err&&err.message||'connection error')+'. Check your network / Firebase rules.');
+      return;
+    }
     $('stage-code').textContent = this.code;
     $('stage-deck-name').textContent = session.title;
     const share = location.origin + location.pathname + '?code=' + this.code;
