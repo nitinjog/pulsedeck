@@ -416,6 +416,8 @@ function makeAdapter(){
         return codes.length;
       },
       async listAdmins(){ const s = await db.ref('admins').get(); return s.val()||{}; },
+      async loadDecksRemote(){ const s = await db.ref('decks').get(); return s.val()||[]; },
+      async saveDecksRemote(arr){ await db.ref('decks').set(arr); },
       async setAdmin(username,rec){ await db.ref('admins/'+username).set(rec); },
       async deleteAdmin(username){ await db.ref('admins/'+username).remove(); },
       onSession(code,cb){
@@ -448,6 +450,8 @@ function makeAdapter(){
     async deleteSession(c){ localStorage.removeItem('pd-sess-'+c); },
     async deleteAllSessions(exceptCode){ const codes=[]; for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k&&k.startsWith('pd-sess-')) codes.push(k.slice(8)); } const del=codes.filter(c=>c!==exceptCode); del.forEach(c=>localStorage.removeItem('pd-sess-'+c)); return del.length; },
     async listAdmins(){ return JSON.parse(localStorage.getItem('pd-admins')||'{}'); },
+    async loadDecksRemote(){ return JSON.parse(localStorage.getItem('pd-decks')||'[]'); },
+    async saveDecksRemote(arr){ localStorage.setItem('pd-decks', JSON.stringify(arr)); },
     async setAdmin(username,rec){ const a=JSON.parse(localStorage.getItem('pd-admins')||'{}'); a[username]=rec; localStorage.setItem('pd-admins',JSON.stringify(a)); },
     async deleteAdmin(username){ const a=JSON.parse(localStorage.getItem('pd-admins')||'{}'); delete a[username]; localStorage.setItem('pd-admins',JSON.stringify(a)); },
     onSession(c,cb){
@@ -473,8 +477,27 @@ function genCode(){ const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c=''; for(let
 const TYPE_LABELS = {choice:'Multiple choice', cloud:'Word cloud', scale:'Rating scale', open:'Open text'};
 
 /* ---------------- decks in localStorage ---------------- */
-function loadDecks(){ return JSON.parse(localStorage.getItem('pd-decks')||'[]'); }
-function saveDecks(d){ localStorage.setItem('pd-decks',JSON.stringify(d)); }
+/* Decks live in Firebase (shared across devices). We keep an in-memory cache
+   so the many synchronous loadDecks() call sites keep working, and mirror to
+   localStorage as an offline fallback. Call syncDecks() to refresh the cache. */
+let DECK_CACHE = JSON.parse(localStorage.getItem('pd-decks')||'[]');
+function loadDecks(){ return DECK_CACHE; }
+function saveDecks(d){
+  DECK_CACHE = d;
+  localStorage.setItem('pd-decks', JSON.stringify(d)); // offline mirror
+  // push to shared store (fire-and-forget; errors surfaced via toast)
+  Promise.resolve(store.saveDecksRemote(d)).catch(e=>{
+    toast(/permission|denied/i.test(e.message||'') ? 'Surveys couldn\'t sync — add read/write rules for the decks node.' : 'Survey sync failed: '+e.message);
+  });
+}
+async function syncDecks(){
+  try {
+    const remote = await store.loadDecksRemote();
+    DECK_CACHE = Array.isArray(remote) ? remote : [];
+    localStorage.setItem('pd-decks', JSON.stringify(DECK_CACHE));
+  } catch(e){ /* keep local cache if remote unreadable */ }
+  return DECK_CACHE;
+}
 
 /* ---------------- app ---------------- */
 const app = {
@@ -770,7 +793,7 @@ const app = {
   },
   async openAdmin(){
     this.show('view-admin');
-    if(this._admin){ this._enterAdmin(); return; }
+    if(this._admin){ await this._enterAdmin(); return; }
     $('admin-lock').classList.remove('hidden');
     $('admin-body').classList.add('hidden');
     // decide login vs bootstrap based on whether any admins exist
@@ -805,7 +828,7 @@ const app = {
       return;
     }
     this._admin = { username:u, role:'owner' };
-    this._enterAdmin();
+    await this._enterAdmin();
   },
   async adminLogin(){
     const u = ($('admin-user').value||'').trim();
@@ -817,9 +840,20 @@ const app = {
     const rec = admins[u];
     if(!rec || rec.hash !== await this._hash(pw)){ toast('Incorrect username or password.'); return; }
     this._admin = { username:u, role:rec.role||'admin' };
-    this._enterAdmin();
+    await this._enterAdmin();
   },
-  _enterAdmin(){
+  async _enterAdmin(){
+    await syncDecks();
+    // One-time migration: if the shared store has no decks yet but this browser
+    // has locally-built ones, offer to upload them so they're visible everywhere.
+    try {
+      const localArr = JSON.parse(localStorage.getItem('pd-decks')||'[]');
+      if((!DECK_CACHE || DECK_CACHE.length===0) && localArr.length>0){
+        if(confirm('Found '+localArr.length+' survey(s) saved only on this device. Upload them to the shared store so they appear on all your laptops?')){
+          await store.saveDecksRemote(localArr); DECK_CACHE = localArr;
+        }
+      }
+    } catch(e){}
     $('admin-pass') && ($('admin-pass').value='');
     $('admin-lock').classList.add('hidden');
     $('admin-body').classList.remove('hidden');
@@ -921,6 +955,7 @@ const app = {
     decks.splice(i+1,0,copy); saveDecks(decks); this.refreshAdmin();
   },
   async refreshAdmin(){
+    await syncDecks();
     this.renderAdminDecks();
     const listEl = $('admin-sess-list'), selEl = $('admin-sess-select');
     listEl.innerHTML = '<p class="admin-sub">Loading sessions…</p>';
